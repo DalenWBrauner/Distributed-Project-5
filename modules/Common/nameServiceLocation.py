@@ -14,4 +14,4 @@ structure if the name service changes address.
 
 """
 
-name_service_address = ("seri0.ida.liu.se", 40000)
+name_service_address = ("127.0.0.1", 40000)
