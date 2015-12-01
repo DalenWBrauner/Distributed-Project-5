@@ -35,48 +35,52 @@ logging.basicConfig(format="%(levelname)s:%(filename)s: %(message)s", level=logg
 
 class NameServer(object):
     """Class that handles peers."""
-
-    # The dictionary self.peers assigns a set to each object type
-    # This set contains tuples that represent the peers of that type
-    # The tuple is of the id of that peer and their address (id, addr)
-
-    # So for example, self.peers could look like this:
-
-    # obj_type (key)    | peers (entry)
-    # ------------------+------------------------------------------------------
-    # [obj0]            | [ (0, addr0), (3, addr3) ]
-    # [obj1]            | [ (1, addr1), (4, addr4), (5, addr5) ]
-    # [obj2]            | [ (2, addr2) ]
     
     def __init__(self):
         self.lock = ReadWriteLock()
-        self.peers = dict()         # Contains a set of peers for each object type
-        self.responses = dict()
         self.next_id = 0
+        self.responses = dict()
+        self.peers = dict()
 
+    # The dictionary self.peers assigns a dict to each object type
+    # This dict maps the id of each peer to their address (id: addr)
 
-    def register(self, obj_type, address):
-        self._check_all_alive(obj_type) # Make sure everyone in our group is still alive
+    # So for example, self.peers could look like this:
+
+    # obj_type (key)    | peers (value)
+    # ------------------+------------------------------------------------------
+    # [group0]          | {0: (addr0, port0), 3: (addr3, port3)}
+    # [group1]          | {1: (addr1, port1), 4: (addr4, port4), 5: (addr5, port5)}
+    # [group2]          | {2: (addr2, port2)}
+
+    def register(self, obj_type, fullAddress):
+        logging.debug("NameServer registering peer at {}".format(fullAddress))
+
+        # Make sure everyone in our group is still alive
+        self._check_all_alive(obj_type) 
+
+        # The address might come in another format
+        fullAddress = tuple(fullAddress)
         
-        address = tuple(address)    # The address might come in as a list.
-        logging.debug("NameServer registering peer at {}".format(address))
-        
-        # We're making modifications to the NameServer's data
+        # Set the hash to the address (for now)
+        obj_hash = fullAddress
+
+        # We're locking since we're making changes to self.next_id
         self.lock.write_acquire()
-        obj_hash = address       # Set the hash to the address (for now)
         obj_id = self.next_id
         self.next_id += 1
-        t = (obj_id, obj_hash) 
         self.lock.write_release()
 
-        # We're adding the address to the group
+        # We can't have anything locked when we call this
         group = self._get_group(obj_type)
-        self.lock.write_acquire() # Acquire the lock before we add ourselves to the group
-        group.add(t)              # Add ourselves
-        self.lock.write_release() # Release the lock
+
+        # Add the address to our group of servers
+        self.lock.write_acquire()
+        group[obj_id] = obj_hash
+        self.lock.write_release()
         
-        logging.info("NameServer done registering peer at {}".format(address))
-        return t
+        logging.info("NameServer done registering peer at {}".format(fullAddress))
+        return (obj_id, obj_hash)
 
     def unregister(self, obj_id, obj_type, obj_hash):
         logging.debug("NameServer unregistering peer at {}".format(tuple(obj_hash)))
@@ -84,62 +88,79 @@ class NameServer(object):
         # The hash might come in another format
         obj_hash = tuple(obj_hash)
         
-        # Get the data necessary
         group = self._get_group(obj_type)
-        t = (obj_id, tuple(obj_hash))
+        # Ensure what they're trying to remove matches our data exactly
+        if obj_id in group and (group[obj_id] == obj_hash):
+            self._remove_peer(obj_type, obj_id)
 
-        # Remove from the group (if it exists)
-        self.lock.write_acquire()
-        if t in group:
-            group.remove(t)
         # If not, it's probably our fault
         else:
             logging.debug("\nERR: Unregistering peer not registered!\n{}"
                           .format((obj_id,obj_type,obj_hash)))
-        self.lock.write_release()
-        logging.info("NameServer done unregistering peer at {}".format(tuple(obj_hash)))
+        
 	# This function doesn't stop until every peer has been checked.
         # BUT there's a peer out there waiting for this function to return
         # Before it can be unregistered.
         # This is very obnoxious.
+        logging.info("NameServer done unregistering peer at {}".format(tuple(obj_hash)))
         self._check_all_alive(obj_type) # Make sure everyone in our group is still alive
         return "null"
     
     def get_peers(self, obj_type):
-        return list(self._get_group(obj_type))
+        """ Returns a copy of our dictionary of peers for any obj_type. """
+        peers = self._get_group(obj_type)
+
+        # We want to lock this in case someone tries to change it
+        self.lock.read_acquire()
+        peers = copy.deepcopy(peers)
+        self.lock.read_release()
+        
+        return peers
 
     def require_any(self, server_type):
-        # What is this supposed to return, just the address?
+        """ What is this supposed to return, just the address? """        
         thosePeers = self.get_peers(server_type)
-        randomPeer = thosePeers[randint(0,len(thosePeers)-1)]
+        
+        # Pick a random peer
+        randomKey = thosePeers.keys()[randint(0,len(thosePeers)-1)]
+        randompeer = thosePeers[randomKey]
+        
         return randomPeer[1] # This should be the (address,port)
 
     def require_object(self, server_type, server_id):
         thosePeers = self.get_peers(server_type)
 
-        # You know, this would just be a simple lookup
-        # if this was a dictionary...
-        chosenPeer = None
-        for peer in thosePeers:
-            if peer[0] == server_id:
-                chosenPeer = peer[1]
-        return chosenPeer
+        # Don't return something that doesn't exist, of course
+        if server_id in thosePeers:
+            return thosePeers[server_id]
+        else:
+            return None
 
     # -------------------------------------------------------------------------
     # Private Methods
     # -------------------------------------------------------------------------
 
+    def _remove_peer(self, obj_type, obj_ID):
+        group = self._get_group(obj_type)
+        logging.info("Removing peer {}.".format(obj_ID))
+        self.lock.write_acquire()
+        del group[obj_ID]
+        self.lock.write_release()
     
     def _get_group(self, obj_type):
+        """
+        Returns a dictionary of our obj_type, complete with
+        locking and creating the dictionary if it doesn't already exist.
+        """
         # Create our group if it doesn't already exist
         if obj_type not in self.peers:
             self.lock.write_acquire()
-            self.peers[obj_type] = set()
+            self.peers[obj_type] = dict()
             self.lock.write_release()
         
         # Fetch and return the group
         self.lock.read_acquire()
-        group = self.peers.get(obj_type)
+        group = self.peers[obj_type]
         self.lock.read_release()
 
         # Make sure to lock.read_acquire() when using this group,
@@ -147,13 +168,13 @@ class NameServer(object):
         return group
 
     # These aren't imported from the orb because the nameServer doesn't store
-    # things inside peerLists, but instead inside sets within dicts.
+    # things inside peerLists, but instead inside dicts within dicts.
     
     def _check_all_alive(self, obj_type):
         logging.info("NameServer confirming connections to all peers" \
                  + " of type {}.".format(obj_type))
-        group = copy.deepcopy(self._get_group(obj_type))
-        for peer in group:
+        peers = self.get_peers(obj_type)
+        for peer in peers.values():
             self._check_alive(obj_type, peer)
     
     def _check_alive(self, obj_type, peer):
@@ -161,12 +182,7 @@ class NameServer(object):
 
         # If it's dead, clean it off the list.
         if not self._is_alive(obj_type, peer, 5):
-            t = peer
-            group = self._get_group(obj_type)
-            self.lock.write_acquire()
-            logging.info("Removing peer {}.".format(t))
-            group.remove(t)
-            self.lock.write_release()
+            self._remove_peer(obj_type, peer)
     
     def _is_alive(self, obj_type, peer, timeout=5):
         try:

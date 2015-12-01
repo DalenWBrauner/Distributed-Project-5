@@ -48,9 +48,9 @@ class PeerList(object):
             name_service = self.owner.name_service
 
             # Get the list of peers from the name service
-            # We get a list of tuples from the name service
-            # of the format (id, addr)
-            peer_set = name_service.get_peers(self.owner.type)
+            # We get a dictionary of tuples from the name service
+            # of the format id: addr
+            peer_dict = name_service.get_peers(self.owner.type)
         except:
             self.lock.release()
             raise
@@ -60,8 +60,8 @@ class PeerList(object):
         
         # Using the list of tuples, register the peers
         # Then register itself with each peer registered
-        for peer_tuple in peer_set:
-            peer_id, peer_addr = peer_tuple
+        for peer_id in peer_dict.keys():
+            peer_addr = peer_dict[peer_id]
             if peer_id != self.owner.id:
                 self.register_peer(peer_id, peer_addr,
                 # We're just spawning, we don't need to check if they've died
