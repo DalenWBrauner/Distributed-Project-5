@@ -28,7 +28,7 @@ Name server for a group of peers. It allows peers to find each other by object_i
 server_address = nameServiceLocation.name_service_address
 
 # -----------------------------------------------------------------------------
-# Auxiliary classes
+# The Name Server
 # -----------------------------------------------------------------------------
 
 logging.basicConfig(format="%(levelname)s:%(filename)s: %(message)s", level=logging.INFO)
@@ -54,7 +54,6 @@ class NameServer(object):
         self.responses = dict()
         self.next_id = 0
 
-    # Public methods
 
     def register(self, obj_type, address):
         self._check_all_alive(obj_type) # Make sure everyone in our group is still alive
@@ -81,6 +80,9 @@ class NameServer(object):
 
     def unregister(self, obj_id, obj_type, obj_hash):
         logging.debug("NameServer unregistering peer at {}".format(tuple(obj_hash)))
+
+        # The hash might come in another format
+        obj_hash = tuple(obj_hash)
         
         # Get the data necessary
         group = self._get_group(obj_type)
@@ -90,6 +92,7 @@ class NameServer(object):
         self.lock.write_acquire()
         if t in group:
             group.remove(t)
+        # If not, it's probably our fault
         else:
             logging.debug("\nERR: Unregistering peer not registered!\n{}"
                           .format((obj_id,obj_type,obj_hash)))
@@ -122,24 +125,29 @@ class NameServer(object):
                 chosenPeer = peer[1]
         return chosenPeer
 
-    # Private methods
+    # -------------------------------------------------------------------------
+    # Private Methods
+    # -------------------------------------------------------------------------
+
     
     def _get_group(self, obj_type):
         # Create our group if it doesn't already exist
-        self.lock.write_acquire()
-        if obj_type not in self.peers.keys():
+        if obj_type not in self.peers:
+            self.lock.write_acquire()
             self.peers[obj_type] = set()
-        self.lock.write_release()
+            self.lock.write_release()
         
         # Fetch and return the group
         self.lock.read_acquire()
         group = self.peers.get(obj_type)
         self.lock.read_release()
+
+        # Make sure to lock.read_acquire() when using this group,
+        #       and to lock.read_release() when you're done!
         return group
 
-    # I know these aren't just imported from the orb for a reason,
-    # and I believe that reason is based on how the Nameserver accesses peers
-    # versus how the ORB does it, I just can't remember the specifics right now
+    # These aren't imported from the orb because the nameServer doesn't store
+    # things inside peerLists, but instead inside sets within dicts.
     
     def _check_all_alive(self, obj_type):
         logging.info("NameServer confirming connections to all peers" \
@@ -150,6 +158,8 @@ class NameServer(object):
     
     def _check_alive(self, obj_type, peer):
         logging.debug("NameServer confirming connection to peer {}.".format(peer[0]))
+
+        # If it's dead, clean it off the list.
         if not self._is_alive(obj_type, peer, 5):
             t = peer
             group = self._get_group(obj_type)
