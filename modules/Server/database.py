@@ -21,12 +21,21 @@ class Database(object):
 
     def read(self):
         """Read a random location in the database."""
-        db_file = open(self.db_filename,'r')#.read()
+        db_file = open(self.db_filename,'r')
         db_text = db_file.read()
         db_file.close()
 	
         fortune_list = db_text.split("\n%\n")
+
+        # Clear our fortune_list of empty strings
+        while "" in fortune_list:
+            fortune_list.remove("")
+        
         rand_fortune = self.rand.randint(0,len(fortune_list))
+        #rand_fortune = self.rand.randint(0,len(fortune_list)-1)
+
+        if rand_fortune == len(fortune_list):
+            return "You will have bad luck with programs today.\n"
         return fortune_list[rand_fortune] + "\n"
 
     def write(self, fortune):

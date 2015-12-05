@@ -21,33 +21,31 @@ class DistributedReadWriteLock(readWriteLock.ReadWriteLock):
         readWriteLock.ReadWriteLock.__init__(self)
         # Create a distributed lock
         self.distributed_lock = distributed_lock
-        print("DistributedReadWriteLock.__init__()")
 
     # Public methods
 
-    def write_acquire(self):
+    def write_acquire(self, allPeers):
         """Acquire the rights to write into the database.
 
         Override the write_acquire method to include obtaining write-access
         to the rest of the peers.
 
         """
-        print("distributeReadWriteLock.write_acquire()")
+        for peer in allPeers:
+            peer.write_acquire_local()
 
-    def write_release(self):
+    def write_release(self, allPeers):
         """Release the rights to write into the database.
 
         Override the write_release method to include releasing write-access
         to the rest of the peers.
 
         """
-        print("distributeReadWriteLock.write_release()")
+        for peer in allPeers:
+            peer.write_release_local()
 
     def write_acquire_local(self):
         readWriteLock.ReadWriteLock.write_acquire(self)
 
     def write_release_local(self):
         readWriteLock.ReadWriteLock.write_release(self)
-
-    # read_acquire(self)
-    # read_acquire(self)

@@ -67,6 +67,8 @@ print("Connecting to server: {}".format(server_address))
 # Create the database object.
 db = orb.Stub(server_address)
 
+class TheRoof(Exception): pass
+
 if not opts.interactive:
     # Run in the normal mode.
     if opts.fortune is not None:
@@ -92,7 +94,10 @@ Choose one of the following commands:
         sys.stdout.write("Command> ")
         command = input()
         if command == "r":
-            print(db.read())
+            fortune = db.read()
+            print(fortune)
+            if fortune == "You will have bad luck with programs today.\n":
+                raise TheRoof
         elif (len(command) > 1 and command[0] == "w" and
                 command[1] in [" ", "\t"]):
             db.write(command[2:].strip())

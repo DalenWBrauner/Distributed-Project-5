@@ -85,7 +85,9 @@ class Server(orb.Peer):
             "release":            self.distributed_lock.release,
             "request_token":      self.distributed_lock.request_token,
             "obtain_token":       self.distributed_lock.obtain_token,
-            "display_status":     self.distributed_lock.display_status
+            "display_status":     self.distributed_lock.display_status,
+            "write_acquire_local":self.drwlock.write_acquire_local,
+            "write_release_local":self.drwlock.write_release_local
         }
         orb.Peer.start(self)
         self.peer_list.initialize()
@@ -111,11 +113,9 @@ class Server(orb.Peer):
 
     def read(self):
         """Read a fortune from the database."""
-        print("serverPeer.read()")
         self.drwlock.read_acquire()
         fortune = None
         try:
-            print(type(self.db))
             fortune = self.db.read()
         except:
             print("serverPeer.py: Error reading the database:\n",
@@ -129,11 +129,20 @@ class Server(orb.Peer):
 
         Obtain the distributed lock and call all other servers to write
         the fortune as well. Call their 'write_local' as they cannot
-        atempt to obtain the distributed lock when writting their
+        attempt to obtain the distributed lock when writting their
         copies.
 
         """
-        print("serverPeer.write({})".format(fortune))
+        self.distributed_lock.acquire()
+        # We'll need this
+        allPeers = self.distributed_lock.peer_list.get_peers().values()
+        self.drwlock.write_acquire(allPeers)
+        
+        for peer in allPeers:
+            peer.write_local(fortune)
+            
+        #self.drwlock.write_release(allPeers)
+        self.distributed_lock.release()
 
     def write_local(self, fortune):
         """Write a fortune to the database.
@@ -142,8 +151,7 @@ class Server(orb.Peer):
         obtained the distributed lock.
 
         """
-
-        self.drwlock.write_acquire_local()
+        #self.drwlock.write_acquire_local()
         try:
             self.db.write(fortune)
         finally:

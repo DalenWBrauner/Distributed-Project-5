@@ -154,7 +154,8 @@ class DistributedLock(object):
                 peer.request_token(self.time,self.owner.id)
 
             # If we acquired the token while requesting, this will pass immediately
-            print("Status is {}. Waiting for token...".format(self.state))
+            if self.state == NO_TOKEN:
+                print("Status is {}. Waiting for token...".format(self.state))
             while self.state == NO_TOKEN:
                 time.sleep(1)
 
