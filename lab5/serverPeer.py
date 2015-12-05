@@ -111,11 +111,18 @@ class Server(orb.Peer):
 
     def read(self):
         """Read a fortune from the database."""
-
-        #
-        # Your code here.
-        #
-        pass
+        print("serverPeer.read()")
+        self.drwlock.read_acquire()
+        fortune = None
+        try:
+            print(type(self.db))
+            fortune = self.db.read()
+        except:
+            print("serverPeer.py: Error reading the database:\n",
+                  sys.exc_info())
+        finally:
+            self.drwlock.read_release()
+        return fortune
 
     def write(self, fortune):
         """Write a fortune to the database.
@@ -126,11 +133,7 @@ class Server(orb.Peer):
         copies.
 
         """
-
-        #
-        # Your code here.
-        #
-        pass
+        print("serverPeer.write({})".format(fortune))
 
     def write_local(self, fortune):
         """Write a fortune to the database.

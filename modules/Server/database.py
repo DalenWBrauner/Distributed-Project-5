@@ -21,7 +21,7 @@ class Database(object):
 
     def read(self):
         """Read a random location in the database."""
-        db_file = open(self.db_filename,'r').read()
+        db_file = open(self.db_filename,'r')#.read()
         db_text = db_file.read()
         db_file.close()
 	
